@@ -42,6 +42,15 @@ func GetNum(lib *Library,name string) int {
   return tmp
 }
 
+// Daily update
+func (lib *Library) GetUpdate() {
+  fmt.Println("Update start.")
+  //executeSQLsFromFile("Update.sql",lib.db)
+  crt:=GetTime()
+  lib.db.Exec(fmt.Sprintf("UPDATE user SET authority=0 WHERE id IN (SELECT uid FROM book, booktype, borrow WHERE bid=book.id AND book.ISBN=booktype.ISBN AND removed=0 AND existed=1 AND is_returned=0 AND authority!= 100 AND time+(1 + extend_status)*7<%d)", crt))
+  fmt.Println("Update Done.")
+}
+
 // From ass2
 func mustExecute(db *sqlx.DB, SQLs []string) {
 	for _, s := range SQLs {
@@ -208,7 +217,7 @@ func (lib *Library) QueryNotReturned(uid int) error {
       return err
     }
     fmt.Println("ID ISBN Title Author Userid")
-    var idint
+    var id int
     var ISBN,title,author string
     for rows.Next() {
       rows.Scan(&id,&ISBN,&title,&author)
@@ -217,6 +226,95 @@ func (lib *Library) QueryNotReturned(uid int) error {
     fmt.Println("Done!")
   } else{
     fmt.Println("Book doesnt existed!")
+  }
+  return err
+}
+
+// Query un returned book
+func (lib *Library) QueryBorrow(uid int) error {
+  rows, err := lib.db.Query(fmt.Sprintf("SELECT COUNT(*) FROM borrow WHERE uid=%d", uid))
+  if err!=nil {
+    return err
+  }
+  rows.Next()
+  var tmp int
+  rows.Scan(&tmp)
+  fmt.Println(tmp,"borrow history in all.")
+  fmt.Println("Now checking",uid)
+  if tmp!=0 {
+    rows, err=lib.db.Query(fmt.Sprintf("SELECT id,bid,uid,time,is_returned,extend_status FROM borrow WHERE uid=%d", uid))
+    if err!=nil {
+      return err
+    }
+    fmt.Println("ID BorrowID UserID Time IsReturned ExtendStatus")
+    var id,bid,uid,time,is_returned,extend_status int
+    for rows.Next() {
+      rows.Scan(&id,&bid,&uid,&time,&is_returned,&extend_status)
+      fmt.Println(id,bid,uid,time,is_returned,extend_status)
+    }
+    fmt.Println("Done!")
+  } else{
+    fmt.Println("History doesnt existed!")
+  }
+  return err
+}
+
+// Query un returned book
+func (lib *Library) CheckDDL(uid int) error {
+  rows, err := lib.db.Query(fmt.Sprintf("SELECT COUNT(*) FROM borrow WHERE uid=%d", uid))
+  if err!=nil {
+    return err
+  }
+  rows.Next()
+  var tmp int
+  rows.Scan(&tmp)
+  fmt.Println(tmp,"borrow history in all.")
+  fmt.Println("Now checking",uid)
+  if tmp!=0 {
+    rows, err=lib.db.Query(fmt.Sprintf("SELECT book.id,title,time+(1 + extend_status)*7 FROM book, booktype, borrow WHERE bid=book.id AND book.ISBN=booktype.ISBN AND removed=0 AND existed=1 AND is_returned=0 AND uid=%d", uid))
+    if err!=nil {
+      return err
+    }
+    fmt.Println("BookID Title Deadline")
+    var id,ddl int
+    var title string
+    for rows.Next() {
+      rows.Scan(&id,&title,&ddl)
+      fmt.Println(id,title,ddl)
+    }
+    fmt.Println("Done!")
+  } else{
+    fmt.Println("History doesnt existed!")
+  }
+  return err
+}
+// Query un returned book
+func (lib *Library) CheckDue(uid int) error {
+  rows, err := lib.db.Query(fmt.Sprintf("SELECT COUNT(*) FROM borrow WHERE uid=%d", uid))
+  if err!=nil {
+    return err
+  }
+  rows.Next()
+  var tmp,crt int
+  crt=GetTime()
+  rows.Scan(&tmp)
+  fmt.Println(tmp,"borrow history in all.")
+  fmt.Println("Now checking",uid)
+  if tmp!=0 {
+    rows, err=lib.db.Query(fmt.Sprintf("SELECT book.id,title,time+(1 + extend_status)*7 FROM book, booktype, borrow WHERE bid=book.id AND book.ISBN=booktype.ISBN AND removed=0 AND existed=1 AND is_returned=0 AND uid=%d AND time+(1 + extend_status)*7<%d", uid, crt))
+    if err!=nil {
+      return err
+    }
+    fmt.Println("BookID Title Deadline")
+    var id,ddl int
+    var title string
+    for rows.Next() {
+      rows.Scan(&id,&title,&ddl)
+      fmt.Println(id,title,ddl)
+    }
+    fmt.Println("Done!")
+  } else{
+    fmt.Println("History doesnt existed!")
   }
   return err
 }
@@ -375,11 +473,9 @@ SL:
         fmt.Scanln(&op)
         lib.QueryBook(op)
       case 5:
-        var uid int
-        fmt.Println("Please enter the user id.")
-        fmt.Scanln(&uid)
-        lib.QueryNotReturned(uid)
+        lib.QueryNotReturned(id)
       case 6:
+        lib.CheckDDL(id)
       case 7:
         fmt.Println("Now logout.")
         break SL
@@ -394,6 +490,7 @@ func adminlogin(lib *Library, id int) {
   fmt.Println()
   fmt.Println("Log success. Welcome admin", id, ".")
   var op int
+  lib.GetUpdate()
 AL:
   for {
     fmt.Println()
@@ -427,9 +524,25 @@ AL:
         fmt.Scanln(&op)
         lib.QueryBook(op)
       case 5:
+        var uid int
+        fmt.Println("Please enter the user id.")
+        fmt.Scanln(&uid)
+        lib.QueryNotReturned(uid)
       case 6:
+        var uid int
+        fmt.Println("Please enter the user id.")
+        fmt.Scanln(&uid)
+        lib.QueryBorrow(uid)
       case 7:
+        var uid int
+        fmt.Println("Please enter the user id.")
+        fmt.Scanln(&uid)
+        lib.CheckDDL(uid)
       case 8:
+        var uid int
+        fmt.Println("Please enter the user id.")
+        fmt.Scanln(&uid)
+        lib.CheckDue(uid)
       case 9:
         fmt.Println("Now logout.")
         break AL
