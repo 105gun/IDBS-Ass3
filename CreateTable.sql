@@ -1,0 +1,30 @@
+CREATE TABLE booktype(
+	ISBN VARCHAR(64) NOT NULL,
+	title VARCHAR(64) NOT NULL,
+	author VARCHAR(64) NOT NULL,
+	PRIMARY KEY(ISBN)
+);
+CREATE TABLE book(
+	id INT NOT NULL,
+	ISBN VARCHAR(64) NOT NULL,
+	existed INT NOT NULL,
+	commit VARCHAR(256),
+	PRIMARY KEY(id),
+	FOREIGN KEY(ISBN) REFERENCES booktype(ISBN)
+);
+CREATE TABLE user(
+	id INT NOT NULL,
+	authority INT NOT NULL,
+	PRIMARY KEY(id)
+);
+CREATE TABLE borrow(
+	id INT NOT NULL,
+	bid INT NOT NULL,
+	uid INT NOT NULL,
+	time INT NOT NULL,
+	is_returned INT NOT NULL,
+	extend_status INT NOT NULL,
+	PRIMARY KEY(id),
+	FOREIGN KEY(bid) REFERENCES book(id),
+	FOREIGN KEY(uid) REFERENCES user(id)
+);
