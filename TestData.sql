@@ -9,13 +9,13 @@ VALUES	('T1', 'Nintendo Power', 'Nintendo'),
 	('T3', 'You Know WHO', 'WHO');
 
 INSERT INTO book
-VALUES	(1, 'T1', 1, ''),
-	(2, 'T1', 0, 'MISSED'),
-	(3, 'T2', 1, ''),
-	(4, 'T3', 1, ''),
-	(5, 'T3', 1, ''),
-	(6, 'T3', 1, ''),
-	(7, 'T3', 1, '');
+VALUES	(1, 'T1', 1, 0, ''),
+	(2, 'T1', 0, 1, 'MISSED'),
+	(3, 'T2', 1, 0, ''),
+	(4, 'T3', 1, 0, ''),
+	(5, 'T3', 1, 0, ''),
+	(6, 'T3', 1, 0, ''),
+	(7, 'T3', 1, 0, '');
 
 INSERT INTO borrow
 VALUES	(1, 1, 1, 0, 1, 0),
