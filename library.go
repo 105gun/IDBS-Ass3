@@ -33,12 +33,13 @@ func GetTime() int {
   return ans
 }
 
-func GetNum(name string) int {
-  rows, err = lib.db.Query(fmt.Sprintf("SELECT MAX(id) FROM %s",name))
+func GetNum(lib *Library,name string) int {
+  rows, _ := lib.db.Query(fmt.Sprintf("SELECT MAX(id) FROM %s",name))
   rows.Next()
   var tmp int
   rows.Scan(&tmp)
-  return tmp+1
+  tmp++
+  return tmp
 }
 
 // From ass2
@@ -69,7 +70,7 @@ func executeSQLsFromFile(filePath string, db *sqlx.DB) error {
 	return nil
 }
 
-// From bolierplate
+// Try to connect the data base
 func (lib *Library) ConnectDB() {
   fmt.Println("--Trying connection.")
   db, err := sqlx.Open("mysql", fmt.Sprintf("%s:%s@tcp(127.0.0.1:3306)/%s", User, Password, DBName))
@@ -94,26 +95,138 @@ func (lib *Library) TestData() error {
   return err
 }
 
-// AddBook add a book into the library
-func (lib *Library) AddBook(title, author, ISBN string){
-  rows, err := lib.db.Query(fmt.Sprintf("SELECT COUNT(*) FROM booktype WHERE ISBN=%s", ISBN)
+// Add a new student user
+func (lib *Library) AddUser(sid int) error{
+  rows, err := lib.db.Query(fmt.Sprintf("SELECT COUNT(*) FROM user WHERE id=%d", sid))
+  if err!=nil {
+    return err
+  }
   rows.Next()
   var tmp int
   rows.Scan(&tmp)
   if tmp!=0 {
-
+    fmt.Println("Already existed!")
   } else{
-    lib.db.Exec(fmt.Sprintf("INSERT INTO booktype VALUES (%s, %s, %s)", ISBN, title, author))
-    lib.db.Exec(fmt.Sprintf("INSERT INTO book VALUES (%d, %s, 1, 0, %s)", ISBN, ""))
+    _, err=lib.db.Exec(fmt.Sprintf("INSERT INTO user VALUES (%d, 1);", sid))
+    fmt.Println("Done!")
   }
+  return err
+}
+
+// AddBook add a book into the library
+func (lib *Library) AddBook(title, author, ISBN string) error{
+  rows, err := lib.db.Query(fmt.Sprintf("SELECT COUNT(*) FROM booktype WHERE ISBN='%s'", ISBN))
+  if err!=nil {
+    return err
+  }
+  rows.Next()
+  var tmp int
+  rows.Scan(&tmp)
+  if tmp!=0 {
+    _, err=lib.db.Exec(fmt.Sprintf("INSERT INTO book VALUES (%d, '%s', 1, 0, '');", GetNum(lib,"book"), ISBN))
+  } else{
+    lib.db.Exec(fmt.Sprintf("INSERT INTO booktype VALUES ('%s', '%s', '%s');", ISBN, title, author))
+    _, err=lib.db.Exec(fmt.Sprintf("INSERT INTO book VALUES (%d, '%s', 1, 0, '');", GetNum(lib,"book"), ISBN))
+  }
+  fmt.Println("Done!")
+  return err
+}
+
+// Remove book
+func (lib *Library) RemoveBook(com string, bid int) error {
+  rows, err := lib.db.Query(fmt.Sprintf("SELECT COUNT(*) FROM book WHERE id=%d", bid))
+  if err!=nil {
+    return err
+  }
+  rows.Next()
+  var tmp int
+  rows.Scan(&tmp)
+  if tmp!=0 {
+    _, err=lib.db.Exec(fmt.Sprintf("UPDATE book SET existed=0, removed=1, commit='%s' WHERE id=%d", com, bid))
+    fmt.Println("Done!")
+  } else{
+    fmt.Println("Book dont existed!")
+  }
+  return err
+}
+
+// Query book by some order
+func (lib *Library) QueryBook(op int) error {
+  rows, err := lib.db.Query(fmt.Sprintf("SELECT COUNT(*) FROM book"))
+  if err!=nil {
+    return err
+  }
+  rows.Next()
+  var tmp int
+  rows.Scan(&tmp)
+  fmt.Println(tmp,"books in all.")
+  if tmp!=0 {
+    var s string
+    switch op {
+      case 0:	//title
+        s="title"
+      case 1:	//anthor
+        s="author"
+      case 2:	//ISBN
+        s="ISBN"
+      default:
+        fmt.Println("Bad op!")
+        return err
+    }
+    rows, err=lib.db.Query(fmt.Sprintf("SELECT book.id,book.ISBN,title,author,existed,removed FROM book, booktype WHERE book.ISBN=booktype.ISBN ORDER BY %s", s))
+    if err!=nil {
+      return err
+    }
+    fmt.Println("ID ISBN Title Author Existed Removed")
+    var id,existed,removed int
+    var ISBN,title,author string
+    for rows.Next() {
+      rows.Scan(&id,&ISBN,&title,&author,&existed,&removed)
+      fmt.Println(id,ISBN,title,author,existed,removed)
+    }
+    fmt.Println("Done!")
+  } else{
+    fmt.Println("Book doesnt existed!")
+  }
+  return err
+}
+
+// Query un returned book
+func (lib *Library) QueryNotReturned(uid int) error {
+  rows, err := lib.db.Query(fmt.Sprintf("SELECT COUNT(*) FROM book WHERE removed=0 AND existed=1"))
+  if err!=nil {
+    return err
+  }
+  rows.Next()
+  var tmp int
+  rows.Scan(&tmp)
+  fmt.Println(tmp,"unreturned books in all.")
+  fmt.Println("Now checking",uid)
+  if tmp!=0 {
+    rows, err=lib.db.Query(fmt.Sprintf("SELECT book.id,book.ISBN,title,author FROM book, booktype, borrow WHERE bid=book.id AND book.ISBN=booktype.ISBN AND removed=0 AND existed=1 AND is_returned=0 AND uid=%d", uid))
+    if err!=nil {
+      return err
+    }
+    fmt.Println("ID ISBN Title Author Userid")
+    var idint
+    var ISBN,title,author string
+    for rows.Next() {
+      rows.Scan(&id,&ISBN,&title,&author)
+      fmt.Println(id,ISBN,title,author,uid)
+    }
+    fmt.Println("Done!")
+  } else{
+    fmt.Println("Book doesnt existed!")
+  }
+  return err
 }
 
 // Try to borrow a book with a student id
-func (lib *Library) BorrowBook(id, bid int) {
+func (lib *Library) BorrowBook(id, bid int) error {
   rows, err := lib.db.Query(fmt.Sprintf("SELECT existed FROM book WHERE id=%d",bid))
   if err != nil {
     fmt.Println("Search fail!")
-    return
+    return err
   }
 
   rows.Next()
@@ -124,16 +237,70 @@ func (lib *Library) BorrowBook(id, bid int) {
     fmt.Println("Book not available!")
   }
   if au==1 {
-    lib.db.Exec(fmt.Sprintf("UPDATE book SET existed=0 WHERE ID=%d",bid))
-    lib.db.Exec(fmt.Sprintf("INSERT INTO borrow VALUES	(%d, %d, %d, %d, 0, 0)", GetNum(borrow), bid, id, GetTime(),))
+    lib.db.Exec(fmt.Sprintf("UPDATE book SET existed=0 WHERE id=%d",bid))
+    _, err=lib.db.Exec(fmt.Sprintf("INSERT INTO borrow VALUES	(%d, %d, %d, %d, 0, 0)", GetNum(lib, "borrow"), bid, id, GetTime(),))
+    fmt.Println("Done!")
   }
+  return err
+}
+
+// Try to return a book
+func (lib *Library) ReturnBook(bid int) error {
+  rows, err := lib.db.Query(fmt.Sprintf("SELECT COUNT(*) FROM book WHERE id=%d",bid))
+  if err != nil {
+    fmt.Println("Search fail!")
+    return err
+  }
+
+  rows.Next()
+  var au int
+  rows.Scan(&au)
+
+  if au==0 {
+    fmt.Println("Book not existed!")
+  }
+  if au==1 {
+    lib.db.Exec(fmt.Sprintf("UPDATE book SET existed=1 WHERE id=%d",bid))
+    _, err=lib.db.Exec(fmt.Sprintf("UPDATE borrow SET is_returned=1 WHERE bid=%d AND is_returned=0",bid))
+    fmt.Println("Done!")
+  }
+  return err
+}
+
+// Extend ddl
+func (lib *Library) Extend(oid int,uid int) error {
+  rows, err := lib.db.Query(fmt.Sprintf("SELECT COUNT(*) FROM borrow WHERE id=%d AND is_returned=0 AND uid=%d",oid, uid))
+  if err != nil {
+    fmt.Println("Search fail!")
+    return err
+  }
+
+  rows.Next()
+  var au, tmp int
+  rows.Scan(&au)
+
+  if au==0 {
+    fmt.Println("Borrow not existed or already returned!")
+  }
+  if au==1 {
+    rows, err = lib.db.Query(fmt.Sprintf("SELECT extend_status FROM borrow WHERE id=%d AND is_returned=0 AND uid=%d",oid, uid))
+    rows.Next()
+    rows.Scan(&tmp)
+    if tmp>=3 {
+      fmt.Println("Can not extend any more!")
+      return err
+    }
+    _, err=lib.db.Exec(fmt.Sprintf("UPDATE borrow SET extend_status=%d WHERE id=%d", tmp+1, oid))
+    fmt.Println("Done!")
+  }
+  return err
 }
 
 // Init step, including drop same name db & create db & create table & set root user
-func initdb(lib *Library) {
+func initdb(lib *Library) error {
   db, err := sqlx.Open("mysql", fmt.Sprintf("%s:%s@tcp(127.0.0.1:3306)/", User, Password))
   if err != nil {
-    panic(err)
+    return err
   }
 
   mustExecute(db, []string{
@@ -142,28 +309,29 @@ func initdb(lib *Library) {
   })
   err=lib.CreateTables()
   if err!=nil {
-    panic(err)
+    return err
   }
   
   db, err = sqlx.Open("mysql", fmt.Sprintf("%s:%s@tcp(127.0.0.1:3306)/%s", User, Password, DBName))
   if err != nil {
     fmt.Println("--Connection fail!")
-    panic(err)
+    return err
   }
 
   // Set root user
   _, err = db.Exec("INSERT INTO user (id, authority) VALUES (0,100)")
   if err != nil {
-    panic(err)
+    return err
   }
 
   // Insert test data, should be ignored in real application
   err=lib.TestData()
   if err != nil {
-    panic(err)
+    return err
   }
 
   lib.db = db
+  return err
 }
 
 // Login as student
@@ -192,9 +360,25 @@ SL:
           fmt.Println("Your account is banned!")
         }
       case 2:
+        var bid int
+        fmt.Println("Please enter the book id.")
+        fmt.Scanln(&bid)
+        lib.ReturnBook(bid)
       case 3:
+        var oid int
+        fmt.Println("Please enter the borrow id.")
+        fmt.Scanln(&oid)
+        lib.Extend(oid, id)
       case 4:
+        op:=0
+        fmt.Println("0.Title 1.Author 2.ISBN")
+        fmt.Scanln(&op)
+        lib.QueryBook(op)
       case 5:
+        var uid int
+        fmt.Println("Please enter the user id.")
+        fmt.Scanln(&uid)
+        lib.QueryNotReturned(uid)
       case 6:
       case 7:
         fmt.Println("Now logout.")
@@ -219,9 +403,29 @@ AL:
     fmt.Scanln(&op)
     switch op {
       case 1:
+        var title, author, ISBN string
+        fmt.Println("Type in the title, author, ISBN:")
+        fmt.Scanln(&title)
+        fmt.Scanln(&author)
+        fmt.Scanln(&ISBN)
+        lib.AddBook(title, author, ISBN)
       case 2:
+        var com string
+        bid:=1
+        fmt.Println("Type in the commit and the book id:")
+        fmt.Scanln(&com)
+        fmt.Scanln(&bid)
+        lib.RemoveBook(com, bid)
       case 3:
+        uid:=0
+        fmt.Println("Type in the user id:")
+        fmt.Scanln(&uid)
+        lib.AddUser(uid)
       case 4:
+        op:=0
+        fmt.Println("0.Title 1.Author 2.ISBN")
+        fmt.Scanln(&op)
+        lib.QueryBook(op)
       case 5:
       case 6:
       case 7:
